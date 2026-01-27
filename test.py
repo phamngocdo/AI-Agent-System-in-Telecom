@@ -1,10 +1,12 @@
+from src.training.trainer import get_model_and_tokenizer
 from src.data.qna_loader import QNALoader
-from src.data.mcq_loader import MCQLoader
 
-q = QNALoader()
-t = q.load()
-print(t)
+def run():
+    _, tokenizer = get_model_and_tokenizer()
 
-m = MCQLoader()
-t = m.load()
-print(t)
+    qna_loader = QNALoader(tokenizer=tokenizer)
+
+    datasets = qna_loader.load(splits=("train", "test"))
+
+if __name__ == "__main__":
+    run()

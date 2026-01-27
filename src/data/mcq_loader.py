@@ -2,8 +2,8 @@ from typing import List, Dict, Any, Tuple
 from src.data.data_loader import DatasetLoader
 
 class MCQLoader(DatasetLoader):
-    def __init__(self):
-        super().__init__(repo_id="phamngocdo/Vietnamese_TeleMCQ_dataset")
+    def __init__(self, tokenizer, repo_id="phamngocdo/Vietnamese_TeleMCQ_dataset"):
+        super().__init__(tokenizer=tokenizer, repo_id=repo_id)
         self.dataset_name = "mcq"
 
     def formatting_train_prompts_func(examples: Dict[str, Any]) -> Dict[str, List[str]]:

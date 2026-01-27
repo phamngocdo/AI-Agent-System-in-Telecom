@@ -5,11 +5,9 @@ from typing import List, Dict, Any, Iterable
 
 from datasets import load_dataset, Dataset
 from src.utils.logger import *
-from src.training.trainer import tokenizer
-
 
 class DatasetLoader(ABC):
-    def __init__(self, repo_id: str, train_file: str = "train.json", test_file: str = "test.json", data_dir: str = "data"):
+    def __init__(self, tokenizer, repo_id: str, train_file: str = "train.json", test_file: str = "test.json", data_dir: str = "data"):
         """
         Args:
             repo_id: Hugging Face dataset repo

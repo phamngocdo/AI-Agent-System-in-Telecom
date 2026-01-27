@@ -2,8 +2,8 @@ from typing import List, Dict, Any
 from src.data.data_loader import DatasetLoader
 
 class QNALoader(DatasetLoader):
-    def __init__(self):
-        super().__init__(repo_id="phamngocdo/Vietnamese_TeleQnA_dataset")
+    def __init__(self, tokenizer, repo_id="phamngocdo/Vietnamese_TeleQnA_dataset"):
+        super().__init__(tokenizer=tokenizer, repo_id=repo_id)
         self.dataset_name = "qna"
 
     def formatting_train_prompts_func(self, examples: Dict[str, Any]) -> Dict[str, List[Any]]:
