@@ -2,6 +2,9 @@
 .env
 /data
 /models
-/logs
+**/logs/
 **/__pycache__/
 *.pyc
+wandb
+**/unsloth_compiled_cache/
+**/.ipynb_checkpoints/

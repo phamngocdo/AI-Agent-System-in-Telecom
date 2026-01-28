@@ -48,19 +48,12 @@ class DatasetLoader(ABC):
         """
         pass
 
-    def load(self, splits: Iterable[str] = ("train", "test")) -> Dict[str, Dataset]:
+    def load(self, splits: Iterable[str] = ("train", "test"), apply_formatting: bool = True) -> Dict[str, Dataset]:
+        """ Load dataset splits. 
+            - Always cache raw first 
+            - Formatting is applied on top of raw cache Args: splits: ("train",), ("test",) or ("train", "test") 
+            Returns: Dict[str, Dataset] 
         """
-        Load dataset splits.
-        - Always cache raw first
-        - Formatting is applied on top of raw cache
-
-        Args:
-            splits: ("train",), ("test",) or ("train", "test")
-
-        Returns:
-            Dict[str, Dataset]
-        """
-
         splits = set(splits)
         assert splits.issubset({"train", "test"}), "splits must be train/test"
 
@@ -72,7 +65,6 @@ class DatasetLoader(ABC):
         os.makedirs(fmt_dir, exist_ok=True)
 
         result = {}
-
         raw_data = {}
 
         for split in splits:
@@ -98,8 +90,13 @@ class DatasetLoader(ABC):
             for split in missing:
                 ds = hf_ds[split]
                 raw_data[split] = ds
-
                 self._save_split(ds, split, raw_dir)
+
+        if not apply_formatting:
+            for split, ds in raw_data.items():
+                result[split] = ds
+                log_info(f"{split} (raw): {len(ds)} samples")
+            return result
 
         for split, ds in raw_data.items():
             fmt_path = os.path.join(fmt_dir, f"{split}.json")
@@ -128,9 +125,10 @@ class DatasetLoader(ABC):
             self._save_split(fmt_ds, split, fmt_dir)
 
         for k, v in result.items():
-            log_info(f"{k}: {len(v)} samples")
+            log_info(f"{k} (formatted): {len(v)} samples")
 
         return result
+
 
     def _save_split(self, dataset: Dataset, split: str, out_dir: str):
         path = os.path.join(out_dir, f"{split}.json")

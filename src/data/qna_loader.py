@@ -59,7 +59,7 @@ class QNALoader(DatasetLoader):
                 {"role": "user", "content": q},
             ]
 
-            text = tokenizer.apply_chat_template(
+            text = self.tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,

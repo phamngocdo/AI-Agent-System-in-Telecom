@@ -1,0 +1,9 @@
+vllm
+transformer
+wandb
+unsloth
+torch
+datasets
+crewai
+prometheus-eval
+deepeval
