@@ -713,7 +713,6 @@ Block Error Rate
 Blockchain-based Roaming
 C-RAN
 C-V2X
-CA
 CORESET
 CP-OFDM
 CPRI
@@ -721,7 +720,6 @@ CQI
 CSCF
 CSFB
 CSI-RS
-CU
 Call Session Control Function
 Carrier Aggregation
 Cellular V2X
@@ -811,9 +809,7 @@ International Mobile Equipment Identity
 International Mobile Subscriber Identity
 Interrogating-CSCF
 Intrusion Detection System
-Iu
 Iu Interface
-LI
 LPWAN
 LTE
 LTE Advanced
@@ -1002,15 +998,10 @@ Reference Signal Received Power
 Reference Signal Received Quality
 Remote Radio Head
 S-CSCF
-S1
 S1 Interface
-S11
 S11 Interface
-S5
 S5 Interface
-S6a
 S6a Interface
-S8
 S8 Interface
 SBA
 SBC
