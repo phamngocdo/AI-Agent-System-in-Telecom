@@ -32,7 +32,7 @@ BATCH_SIZE = 8
 
 sys.path.insert(0, str(ROOT_DIR))
 
-DATA_DIR = (ROOT_DIR / "data/sft_data/qna.json").resolve()
+DATA_DIR = (ROOT_DIR / "data/sft_data/train.json").resolve()
 MODEL_DIR = (ROOT_DIR / "models").resolve()
 
 
@@ -45,7 +45,10 @@ if os.getenv("WANDB_API_KEY"):
     wandb.login(key=os.getenv("WANDB_API_KEY"))
 else:
     print("WANDB_API_KEY not found")
-
+    
+wandb.init(
+    project="Qwen3-sft-training",
+)
 
 # In[2]:
 
@@ -57,7 +60,8 @@ def get_model_and_tokenizer():
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/Qwen3-8B",
         max_seq_length=2048,
-        load_in_4bit=False,
+        load_in_4bit=True,
+        device_map = "balanced"
     )
     tokenizer = get_chat_template(tokenizer, chat_template="qwen-3")
     return model, tokenizer
@@ -66,7 +70,7 @@ def get_model_and_tokenizer():
 
 
 model, tokenizer = get_model_and_tokenizer()
-
+model.load_adapter(MODEL_DIR / "continual-pretrain")
 
 # In[6]:
 
@@ -115,8 +119,6 @@ def format_chat(batch):
 dataset = dataset.map(format_chat, batched=True)
 dataset = dataset.remove_columns(["instruction", "output", "conversations"])
 
-df = dataset.to_pandas()
-df.to_json("data.json", orient="records", force_ascii=False)
 # In[15]:
 
 dataset = dataset.train_test_split(test_size=0.05, seed=SEED)
@@ -127,7 +129,7 @@ dataset = dataset.train_test_split(test_size=0.05, seed=SEED)
 
 model = FastLanguageModel.get_peft_model(
     model,
-    r = 16,
+    r = 32,
     target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                       "gate_proj", "up_proj", "down_proj"],
     lora_alpha = 32,
@@ -184,15 +186,15 @@ training_args = UnslothTrainingArguments(
     gradient_accumulation_steps=8,
 
     warmup_ratio=0.1,
-    num_train_epochs=2,
+    num_train_epochs=3,
     learning_rate=2e-5,
     max_grad_norm=1.0,
 
     eval_strategy="steps",
-    eval_steps=200,
-    logging_steps=20,
+    eval_steps=100,
+    logging_steps=10,
     save_strategy="epoch",
-    save_total_limit=2,
+    save_total_limit=3,
 
     report_to="wandb",
 
@@ -241,6 +243,7 @@ tokenizer.decode([tokenizer.pad_token_id if x == -100 else x for x in trainer.tr
 
 # In[20]:
 trainer.train()
+trainer.evaluate()
 
 
 

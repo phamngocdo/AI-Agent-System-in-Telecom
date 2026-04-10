@@ -64,7 +64,6 @@ model, tokenizer = get_model_and_tokenizer()
 
 # In[ ]:
 
-
 from datasets import load_dataset, concatenate_datasets, DatasetDict
 
 PROMPT_3GPP = """3GPP Standard
@@ -75,16 +74,24 @@ PROMPT_ARXIV = """Arxiv
 ### Title: {title}
 ### Text: {text}"""
 
+PROMPT_BOOKS = """Books
+### Title: {title}
+### Text: {text}"""
+
+PROMPT_MAP = {
+    "3gpp": PROMPT_3GPP,
+    "arxiv": PROMPT_ARXIV,
+    "books": PROMPT_BOOKS,
+}
 
 MAX_SEQ_LENGTH = 2048
 CHUNK_STRIDE   = 256
-
 
 def _chunk_batch(batch, tokenizer):
     all_texts, all_domains = [], []
     EOS = tokenizer.eos_token
     for title, raw_text, domain in zip(batch["title"], batch["raw_text"], batch["domain"]):
-        PROMPT = PROMPT_3GPP if domain == "3gpp" else PROMPT_ARXIV
+        PROMPT = PROMPT_MAP.get(domain, PROMPT_ARXIV)
         tokenized = tokenizer(
             raw_text,
             truncation=True,
@@ -120,6 +127,14 @@ def load_all_pretrain_data(root_dir: str, tokenizer, seed=42):
         remove_columns=ds_rp.column_names,
     )
     datasets_list.append(ds_rp)
+
+    book_file = next((root / "books").glob("*.jsonl"))
+    ds_book = load_dataset("json", data_files=str(book_file), split="train")
+    ds_book = ds_book.map(
+        lambda x: {"title": x["file_name"], "raw_text": x["text"], "domain": "arxiv"},
+        remove_columns=ds_book.column_names,
+    )
+    datasets_list.append(ds_book)
 
     full_dataset = concatenate_datasets(datasets_list)
 
@@ -171,45 +186,45 @@ print(dataset)
 # In[ ]:
 
 
-import pandas as pd
+# import pandas as pd
 
-def count_tokens(example):
-    return {"length": len(tokenizer(example["text"])["input_ids"])}
+# def count_tokens(example):
+#     return {"length": len(tokenizer(example["text"])["input_ids"])}
 
-def get_stats(split):
-    length_ds = dataset[split].map(count_tokens, num_proc=4)
-    df = pd.DataFrame({
-        "domain": length_ds["domain"],
-        "tokens": length_ds["length"],
-    })
-    stats = df.groupby("domain")["tokens"].agg(
-        ["count", "sum", "mean", "max"]
-    ).reset_index()
-    stats.columns = [
-        "domain",
-        f"{split}_num_samples",
-        f"{split}_total_tokens",
-        f"{split}_avg_tokens",
-        f"{split}_max_tokens",
-    ]
-    return stats
+# def get_stats(split):
+#     length_ds = dataset[split].map(count_tokens, num_proc=4)
+#     df = pd.DataFrame({
+#         "domain": length_ds["domain"],
+#         "tokens": length_ds["length"],
+#     })
+#     stats = df.groupby("domain")["tokens"].agg(
+#         ["count", "sum", "mean", "max"]
+#     ).reset_index()
+#     stats.columns = [
+#         "domain",
+#         f"{split}_num_samples",
+#         f"{split}_total_tokens",
+#         f"{split}_avg_tokens",
+#         f"{split}_max_tokens",
+#     ]
+#     return stats
 
-train_stats = get_stats("train")
-val_stats   = get_stats("validation")
+# train_stats = get_stats("train")
+# val_stats   = get_stats("validation")
 
-final_stats = train_stats.merge(val_stats, on="domain", how="outer")
+# final_stats = train_stats.merge(val_stats, on="domain", how="outer")
 
-final_stats["overall_total_tokens"] = (
-    final_stats["train_total_tokens"] +
-    final_stats["validation_total_tokens"]
-)
+# final_stats["overall_total_tokens"] = (
+#     final_stats["train_total_tokens"] +
+#     final_stats["validation_total_tokens"]
+# )
 
-final_stats["val_token_ratio"] = (
-    final_stats["validation_total_tokens"] /
-    final_stats["overall_total_tokens"]
-)
+# final_stats["val_token_ratio"] = (
+#     final_stats["validation_total_tokens"] /
+#     final_stats["overall_total_tokens"]
+# )
 
-final_stats.sort_values("domain")
+# final_stats.sort_values("domain")
 
 
 # In[ ]:
@@ -284,4 +299,4 @@ trainer = UnslothTrainer(
 
 
 trainer_stats = trainer.train()
-
+trainer.evaluate()
