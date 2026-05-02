@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[13]:
+# In[63]:
 
 
 import os
@@ -27,23 +27,12 @@ SEED = 42
 set_seed(SEED)
 random.seed(SEED)
 
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 
 sys.path.insert(0, str(ROOT_DIR))
 
-DATA_MCQ_DIR = (ROOT_DIR / "data/eval_data/tele-qna.json").resolve()
-DATA_OQNA_DIR = (ROOT_DIR / "data/eval_data/tele-eval-10k.json").resolve()
-DATA_MCQ_CUS_EN_DIR = (ROOT_DIR / "data/eval_data/qna-custom-en.json").resolve()
-DATA_MCQ_CUS_VI_DIR = (ROOT_DIR / "data/eval_data/qna-custom-vi.json").resolve()
-
-RESULT_MCQ_DIR = (ROOT_DIR / "data/benchmark_results/tele-qna-with-qwen3-telco.json").resolve()
-RESULT_OQNA_DIR = (ROOT_DIR / "data/benchmark_results/tele-eval-with-qwen3-telco.json").resolve()
-RESULT_MCQ_CUS_EN_DIR = (ROOT_DIR / "data/benchmark_results/tele-qna-cus-with-qwen3-telco-en.json").resolve()
-RESULT_MCQ_CUS_VI_DIR = (ROOT_DIR / "data/benchmark_results/tele-qna-cus-with-qwen3-telco-vi.json").resolve()
-
-MODEL_DIR = (ROOT_DIR / "models").resolve()
-CT_ADAPTER = (MODEL_DIR / "continual-pretrain").resolve()
-SFT_ADAPTER = (MODEL_DIR / "checkpoint-3564").resolve()
+MODEL_DIR = (ROOT_DIR / "models/version3").resolve()
+RESULT_DIR = (ROOT_DIR / "data/benchmark_results_1").resolve()
 
 
 # In[2]:
@@ -55,12 +44,13 @@ import torch
 
 def get_model_and_tokenizer():
     model = AutoModelForCausalLM.from_pretrained(
-        "unsloth/Qwen3-8B",
+        MODEL_DIR,
         dtype=torch.bfloat16,
-        device_map="balanced"
+        device_map="auto"
     )
-    tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen3-8B")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
     return model, tokenizer
+
 
 # In[3]:
 
@@ -68,44 +58,196 @@ def get_model_and_tokenizer():
 model, tokenizer = get_model_and_tokenizer()
 
 
-# In[4]:
+# In[76]:
 
 
-from peft import PeftModel
-model = PeftModel.from_pretrained(model, CT_ADAPTER)
-model = model.merge_and_unload()
-model = PeftModel.from_pretrained(model, SFT_ADAPTER)
-model = model.merge_and_unload()
-# In[5]:
+from datasets import load_dataset
+
+BENCHMARKS = [
+    "teleqna",
+    "teletables",
+    "telemath",
+    "telelogs",
+    "3gpp_tsg",
+    "oranbench",
+    "srsranbench",
+]
+
+raw_datasets = {
+    name: load_dataset("GSMA/ot-full", name, split="test")
+    for name in BENCHMARKS
+}
+
+# In[77]:
 
 
-import json
-import re
-from datasets import Dataset
-from tqdm import tqdm
+def normalize_dataset(name, ds):
+    def _map(example):
+        ex = dict(example)
+        if name in ["teleqna", "teletables", "oranbench", "srsranbench"]:
+            ex["answer"] = ex["answer"] + 1
 
-with open(DATA_MCQ_DIR, "r", encoding="utf-8") as f:
-    data = json.load(f)
+        return ex
 
-dataset = Dataset.from_list(data)
+    return ds.map(_map)
 
 
-# In[6]:
+# In[79]:
 
-def build_texts_mcq(batch):
+
+datasets_norm = {}
+
+for name, ds in raw_datasets.items():
+    print(f"Normalizing {name} ...")
+    datasets_norm[name] = normalize_dataset(name, ds)
+
+
+# In[54]:
+
+
+def build_texts_mcq(batch, dataset_name, enable_thinking=False):
     texts = []
 
     for sample in batch:
-        choices_text = "\n".join(
-            [f"{i+1}. {c}" for i, c in enumerate(sample["choices"])]
-        )
+        choices = sample["choices"]
+
+        if dataset_name in ["teleqna", "teletables"]:
+            choices_text = "\n".join(
+                [f"{i+1}. {c}" for i, c in enumerate(choices)]
+            )
+        else:
+            choices_text = "\n".join(choices)
 
         messages = [
             {
                 "role": "user",
-                "content": f"""{sample['question']}
+                "content": f"""You are an expert in telecommunications. Select the correct answer.
+
+Question:
+{sample['question']}
 
 {choices_text}
+
+Respond in the following format:
+**The answer is X**. Explanation: your explain
+
+Where X is the option number."""
+            }
+        ]
+
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+
+        texts.append(text)
+
+    return texts
+
+
+# In[23]:
+
+
+MATH_PROMPT = """You are an expert problem solver. Your task is to solve numerical exercises by following these guidelines:
+1. **Understand the Goal:** Clearly identify what the problem is asking you to find, paying close attention to the required units for the final answer.
+2. **Reason Step-by-Step:** Provide a clear, sequential reasoning process. Explain the formulas, principles, or logic used in each step. Show intermediate calculations if they clarify your thought process. The detailed structure of your sub-steps is up to you, as long as the reasoning is sound and easy to follow.
+3. **Unit Management:**
+   * Track units throughout your calculations.
+   * **Crucially, ensure your final numerical answer is converted to the specific units requested in the problem statement.** If intermediate calculations result in a different unit, perform a final conversion step.
+   * State the unit of the final answer clearly in your explanatory text *before* the boxed answer.
+4. **Final Numerical Answer Format:**
+   * The final answer must be a single numerical value (integer or float).
+   * Present this numerical value exclusively within the `\\boxed{{{{...}}}}` format.
+   * **CRITICAL:** The `\\boxed{{{{...}}}}` block must contain *only* the number. No text, no units, no labels.
+
+Problem:
+{question}
+"""
+
+def build_texts_math(batch, enable_thinking=False):
+    texts = []
+
+    for sample in batch:
+        content = MATH_PROMPT.format(question=sample["question"])
+
+        messages = [
+            {"role": "user", "content": content}
+        ]
+
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+
+        texts.append(text)
+
+    return texts
+
+
+# In[18]:
+
+
+def build_texts_cls(batch, enable_thinking=False):
+    texts = []
+
+    for sample in batch:
+        messages = [
+            {
+                "role": "user",
+                "content": sample["question"]
+            }
+        ]
+
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+
+        texts.append(text)
+
+    return texts
+
+def build_texts_logs(batch, enable_thinking=False):
+    texts = []
+
+    for sample in batch:
+
+        messages = [
+            {
+                "role": "user",
+                "content": f"""
+You are a strict classification system.
+
+Task:
+Choose EXACTLY ONE correct option from C1 to C8.
+run_and_save(
+    datasets_norm,
+    processed_data_think,
+    RESULT_DIR,
+    BATCH_SIZE=BATCH_SIZE,
+    mode="reasoning",
+    think=True
+)
+IMPORTANT RULES:
+- Do NOT explain anything
+- Do NOT repeat the question
+- Do NOT output text except final answer
+- Output format MUST be exactly:
+
+\\boxed{{CX}}
+
+where X ∈ [1,8]
+
+Question:
+{sample["question"]}
+
+Return only the final answer.
 """
             }
         ]
@@ -114,279 +256,178 @@ def build_texts_mcq(batch):
             messages,
             tokenize=False,
             add_generation_prompt=True,
-            enable_thinking=False,
+            enable_thinking=enable_thinking,
         )
 
         texts.append(text)
 
     return texts
+# In[55]:
 
 
-# In[7]:
+def preprocess_dataset(name, dataset, enable_thinking=False):
+    batch = list(dataset)
+
+    if name in ["teleqna", "teletables", "oranbench", "srsranbench"]:
+        return build_texts_mcq(batch, name, enable_thinking)
+
+    if name == "telemath":
+        return build_texts_math(batch, enable_thinking)
+
+    if name in ["telelogs"]:
+        return build_texts_logs(batch, enable_thinking)
+
+    if name in ["3gpp_tsg"]:
+        return build_texts_cls(batch, enable_thinking)
+
+    raise ValueError(name)
 
 
-def generate_batch_mcq(texts):
-    inputs = tokenizer(
+# In[56]:
+
+
+processed_data_think = {}
+processed_data_no_think = {}
+
+for name, ds in raw_datasets.items():
+    print(f"Processing {name} ...")
+
+    processed_data_think[name] = preprocess_dataset(
+        name,
+        ds,
+        enable_thinking=True
+    )
+
+    processed_data_no_think[name] = preprocess_dataset(
+        name,
+        ds,
+        enable_thinking=False
+    )
+
+
+# In[95]:
+
+
+def tokenize_all(texts):
+    return tokenizer(
         texts,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
+        padding=False,
+        truncation=True
+    )
+
+
+# In[96]:
+
+
+def generate_from_tokenized(tokenized, start, end):
+    batch = {
+        "input_ids": tokenized["input_ids"][start:end],
+        "attention_mask": tokenized["attention_mask"][start:end],
+    }
+
+    batch = tokenizer.pad(
+        batch,
+        return_tensors="pt"
     ).to(model.device)
 
     outputs = model.generate(
-        **inputs,
-        max_new_tokens=2048,
+        **batch,
+        max_new_tokens=8192,
         do_sample=True,
-        temperature = 0.7,
-        top_p = 0.8, 
-        top_k = 20,
+        return_dict_in_generate=True,
     )
 
-    decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-    return decoded
+    return tokenizer.batch_decode(
+        outputs.sequences,
+        skip_special_tokens=True
+    )
 
-# In[8]:
 
+# In[97]:
+
+
+import os
 import json
-import re
 import time
-import torch
 from tqdm import tqdm
 
-start_wall = time.time()
-
-with open(RESULT_MCQ_DIR, "w", encoding="utf-8") as fout:
-    fout.write("[\n")
-    total = len(dataset)
-
-    for start in tqdm(range(0, total, BATCH_SIZE)):
-        batch = dataset.select(range(start, min(start + BATCH_SIZE, total)))
-        batch = list(batch)
-        texts = build_texts_mcq(batch)
-
-        input_ids_list = [
-            tokenizer.encode(t, add_special_tokens=False) for t in texts
-        ]
-
-        t0 = time.time()
-        decoded = generate_batch_mcq(texts)
-        batch_time = time.time() - t0
-
-        for i, sample in enumerate(batch):
-            full_text = decoded[i]
-            input_tokens  = len(input_ids_list[i])
-            output_tokens = len(tokenizer.encode(full_text, add_special_tokens=False))
-        
-            result = dict(sample)
-        
-            result["model_output"] = full_text
-            result["cost"] = {
-                "input_tokens":  input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens":  input_tokens + output_tokens,
-                "latency_s":     round(batch_time / len(batch), 4),
-            }
-        
-            json.dump(result, fout, ensure_ascii=False)
-            
-            global_idx = start + i
-            fout.write(",\n" if global_idx < total - 1 else "\n")
+def run_and_save(
+    raw_datasets,
+    processed_data,
+    RESULT_DIR,
+    BATCH_SIZE=8,
+    mode="general",
+    think=False
+):
+    save_dir = os.path.join(RESULT_DIR, "think" if think else "non_think")
+    os.makedirs(save_dir, exist_ok=True)
 
-        fout.flush()
-    fout.write("]")
+    for name in datasets_norm:
+        print(f"\n=== Running {name} ===")
 
-wall_time = time.time() - start_wall
-print(f"Done in {wall_time:.2f}s")
+        raw_ds = datasets_norm[name]
+        texts = processed_data[name]
 
-# In[10]:
+        tokenized = tokenize_all(texts)
 
+        save_path = os.path.join(save_dir, f"telcollm-{name}.jsonl")
 
-# import json
-# import re
-# from collections import defaultdict
+        done = 0
+        if os.path.exists(save_path):
+            with open(save_path, "r", encoding="utf-8") as f:
+                done = sum(1 for _ in f)
+            print(f"Resume from {done} samples")
 
-# import re
+        with open(save_path, "a", encoding="utf-8") as f:
 
-# def extract_choice(text):
-#     if not text:
-#         return None
+            for i in tqdm(range(done, len(texts), BATCH_SIZE)):
+                batch_raw = [
+                    raw_ds[k] for k in range(i, min(i+BATCH_SIZE, len(raw_ds)))
+                ]
 
-#     match = re.search(
-#         r"(?:The correct answer is|Đáp án đúng là)\s*([A-Da-d]|[1-5])",
-#         text
-#     )
+                outputs = generate_from_tokenized(
+                    tokenized,
+                    i,
+                    i + BATCH_SIZE
+                )
 
-#     if not match:
-#         return None
+                for j in range(len(outputs)):
+                    result = dict(batch_raw[j])
+                    result["model_output"] = outputs[j]
 
-#     val = match.group(1).upper()
+                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
 
-#     if val in ["A", "B", "C", "D"]:
-#         return ord(val) - ord("A") + 1
-#     return int(val)
+        print(f"Saved → {save_path}")
 
 
-# with open((RESULT_MCQ_DIR).resolve(), "r", encoding="utf-8") as f:
-#     data = json.load(f)
+# In[85]:
 
-# total = 0
-# correct = 0
-# extracted = 0
-# failed_indices = []
 
-# cat_stats = defaultdict(lambda: {"total": 0, "correct": 0})
-# failed_samples = []  # lưu sample trích xuất thất bại
+model.generation_config.max_length = None
 
-# for idx, sample in enumerate(data):
-#     gt = sample.get("answer")
 
-#     text = sample.get("model_output") or sample.get("think", "")
-#     pred = extract_choice(text)
+# In[100]:
 
-#     total += 1
-#     cat = sample.get("category") or "UNKNOWN"
-#     cat_stats[cat]["total"] += 1
 
-#     if pred is None:
-#         failed_indices.append(idx)
-#         failed_samples.append({"index": idx, "text": text})
-#     else:
-#         extracted += 1
-#         if pred == gt:
-#             correct += 1
-#             cat_stats[cat]["correct"] += 1
+run_and_save(
+    datasets_norm,
+    processed_data_no_think,
+    RESULT_DIR,
+    BATCH_SIZE=BATCH_SIZE,
+    mode="general",
+    think=False
+)
 
-# print("\n=== OVERALL ===")
-# if total > 0:
-#     print(f"Accuracy: {correct}/{total} = {correct/total:.4f}")
-# else:
-#     print("No data")
 
-# print("\n=== BY CATEGORY ===")
-# for cat, stat in cat_stats.items():
-#     t = stat["total"]
-#     c = stat["correct"]
-#     acc = c / t if t > 0 else 0
-#     print(f"{cat}: {c}/{t} = {acc:.4f}")
+# In[ ]:
 
-# print("\n=== FAILED EXTRACTIONS ===")
-# for item in failed_samples:
-#     print(f"Index {item['index']}: {item['text'][:100]}{'...' if len(item['text'])>100 else ''}")
 
-
-# In[14]:
-
-
-# import json
-# import re
-# from datasets import Dataset
-# from tqdm import tqdm
-
-# with open(DATA_OQNA_DIR, "r", encoding="utf-8") as f:
-#     data = json.load(f)
-
-# dataset = Dataset.from_list(data)
-
-
-# # In[15]:
-
-
-# def build_texts_qna(batch):
-#     texts = []
-
-#     for sample in batch:
-#         messages = [
-#             {
-#                 "role": "user",
-#                 "content": f"""Answer this question
-
-# Question:
-# {sample['question']}
-
-# Choices:
-# {sample['answer']}
-# """
-#             }
-#         ]
-
-#         text = tokenizer.apply_chat_template(
-#             messages,
-#             tokenize=False,
-#             add_generation_prompt=True,
-#             enable_thinking=False,
-#         )
-
-#         texts.append(text)
-
-#     return texts
-
-
-# # In[16]:
-
-
-# def generate_batch_qna(texts):
-#     inputs = tokenizer(
-#         texts,
-#         return_tensors="pt",
-#         padding=True,
-#         truncation=True,
-#     ).to(model.device)
-
-#     outputs = model.generate(
-#         **inputs,
-#         max_new_tokens=1024,
-#         do_sample=False,
-#         temperature = 0.7,
-#         top_p = 0.8, 
-#         top_k = 20,
-#     )
-
-#     decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-#     return decoded
-
-
-# # In[17]:
-
-
-# import json
-# from tqdm import tqdm
-
-# MARKER = "\n\nassistant\n<think>\n\n</think>\n\n"
-
-# with open(RESULT_OQNA_DIR, "w", encoding="utf-8") as fout:
-#     fout.write("[\n")
-
-#     total = len(dataset)
-
-#     for start in tqdm(range(0, total, BATCH_SIZE)):
-#         batch = dataset.select(range(start, min(start + BATCH_SIZE, total)))
-#         batch = list(batch)
-
-#         texts = build_texts_qna(batch)
-#         decoded = generate_batch_qna(texts)
-
-#         for i, sample in enumerate(batch):
-#             full_text = decoded[i]
-
-#             if MARKER in full_text:
-#                 full_text = full_text.split(MARKER)[1]
-
-#             result = {
-#                 "question": sample["question"],
-#                 "answer": sample["answer"],
-#                 "type": sample.get("type"),
-#                 "model_output": full_text,
-#             }
-
-#             json.dump(result, fout, ensure_ascii=False)
-
-#             global_idx = start + i
-#             if global_idx < total - 1:
-#                 fout.write(",\n")
-#             else:
-#                 fout.write("\n")
-
-#         fout.flush()
-
-#     fout.write("]")
+run_and_save(
+    datasets_norm,
+    processed_data_think,
+    RESULT_DIR,
+    BATCH_SIZE=BATCH_SIZE,
+    mode="reasoning",
+    think=True
+)
 

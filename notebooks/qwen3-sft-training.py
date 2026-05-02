@@ -24,11 +24,11 @@ from transformers import set_seed
 from unsloth import FastLanguageModel, get_chat_template
 load_dotenv()
 
-SEED = 36
+SEED = 42
 set_seed(SEED)
 random.seed(SEED)
 
-BATCH_SIZE = 8
+MAX_SEQ_LENGTH = 4096
 
 sys.path.insert(0, str(ROOT_DIR))
 
@@ -39,16 +39,16 @@ MODEL_DIR = (ROOT_DIR / "models").resolve()
 # In[4]:
 
 
-import wandb
+# import wandb
 
-if os.getenv("WANDB_API_KEY"):
-    wandb.login(key=os.getenv("WANDB_API_KEY"))
-else:
-    print("WANDB_API_KEY not found")
+# if os.getenv("WANDB_API_KEY"):
+#     wandb.login(key=os.getenv("WANDB_API_KEY"))
+# else:
+#     print("WANDB_API_KEY not found")
     
-wandb.init(
-    project="Qwen3-sft-training",
-)
+# wandb.init(
+#     project="Qwen3-sft-training",
+# )
 
 # In[2]:
 
@@ -57,20 +57,27 @@ import unsloth
 from unsloth import FastLanguageModel, get_chat_template
 
 def get_model_and_tokenizer():
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    torch.cuda.set_device(local_rank)
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/Qwen3-8B",
-        max_seq_length=2048,
+        max_seq_length=MAX_SEQ_LENGTH,
         load_in_4bit=True,
-        device_map = "balanced"
+        device_map={"": local_rank},
     )
     tokenizer = get_chat_template(tokenizer, chat_template="qwen-3")
     return model, tokenizer
-
 # In[3]:
 
 
 model, tokenizer = get_model_and_tokenizer()
-model.load_adapter(MODEL_DIR / "continual-pretrain")
+from peft import PeftModel
+
+model = PeftModel.from_pretrained(model, MODEL_DIR / "continual-pretrain", adapter_name="pretrain")
+model.merge_adapter(["pretrain"])
+
+model.delete_adapter("pretrain")
 
 # In[6]:
 
@@ -175,24 +182,21 @@ class SkipNaNCallback(TrainerCallback):
                 print(f"[SkipNaNCallback] LoRA saved to {ckpt_dir}")
 
 
-nan_callback = SkipNaNCallback(tokenizer, save_dir=MODEL_DIR / "sft1")
-
-
-
+nan_callback = SkipNaNCallback(tokenizer, save_dir=MODEL_DIR / "sft")
 
 training_args = UnslothTrainingArguments(
     per_device_train_batch_size=2,
-    per_device_eval_batch_size=4,
-    gradient_accumulation_steps=8,
+    per_device_eval_batch_size=2,
+    gradient_accumulation_steps=128,
 
     warmup_ratio=0.1,
     num_train_epochs=3,
-    learning_rate=2e-5,
+    learning_rate=1e-5,
     max_grad_norm=1.0,
 
     eval_strategy="steps",
-    eval_steps=100,
-    logging_steps=10,
+    eval_steps=5,
+    logging_steps=1,
     save_strategy="epoch",
     save_total_limit=3,
 
@@ -215,7 +219,7 @@ trainer = UnslothTrainer(
     train_dataset=dataset["train"],
     eval_dataset=dataset["test"],
     dataset_text_field="text",
-    max_seq_length=2048,
+    max_seq_length=MAX_SEQ_LENGTH,
     dataset_num_proc=8,
     packing=False,
     args=training_args,
@@ -236,14 +240,10 @@ def _patched_prepare(inputs):
 trainer._prepare_inputs = _patched_prepare
 
 
-# In[19]: Verify masking
+# In[19]:
 tokenizer.decode(trainer.train_dataset[10]["input_ids"])
 tokenizer.decode([tokenizer.pad_token_id if x == -100 else x for x in trainer.train_dataset[100]["labels"]]).replace(tokenizer.pad_token, " ")
 
 
 # In[20]:
 trainer.train()
-trainer.evaluate()
-
-
-

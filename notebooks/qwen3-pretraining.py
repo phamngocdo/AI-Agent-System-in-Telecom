@@ -13,6 +13,9 @@ from transformers import set_seed
 load_dotenv()
 
 SEED = 42
+MAX_SEQ_LENGTH = 4096
+CHUNK_STRIDE   = 256
+
 set_seed(SEED)
 
 BASE_DIR = Path.cwd()
@@ -30,27 +33,31 @@ MODEL_DIR = (ROOT_DIR / "models/").resolve()
 # In[2]:
 
 
-import wandb
+# import wandb
 
-if os.getenv("WANDB_API_KEY"):
-    wandb.login(key=os.getenv("WANDB_API_KEY"))
-else:
-    print("WANDB_API_KEY not found")
+# if os.getenv("WANDB_API_KEY"):
+#     wandb.login(key=os.getenv("WANDB_API_KEY"))
+# else:
+#     print("WANDB_API_KEY not found")
 
-wandb.init(
-    project="Qwen3-Pretraining",
-)
+# wandb.init(
+#     project="Qwen3-Pretraining",
+# )
 
 # In[3]:
 
-
+import unsloth
 from unsloth import FastLanguageModel, get_chat_template
 
 def get_model_and_tokenizer():
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    torch.cuda.set_device(local_rank)
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/Qwen3-8B",
-        max_seq_length=2048,
+        max_seq_length=MAX_SEQ_LENGTH,
         load_in_4bit=True,
+        device_map={"": local_rank},
     )
     tokenizer = get_chat_template(tokenizer, chat_template="qwen-3")
     return model, tokenizer
@@ -84,8 +91,6 @@ PROMPT_MAP = {
     "books": PROMPT_BOOKS,
 }
 
-MAX_SEQ_LENGTH = 2048
-CHUNK_STRIDE   = 256
 
 def _chunk_batch(batch, tokenizer):
     all_texts, all_domains = [], []
@@ -235,7 +240,7 @@ model = FastLanguageModel.get_peft_model(
     r = 128,
     target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                       "gate_proj", "up_proj", "down_proj"],
-    lora_alpha = 32,
+    lora_alpha = 128,
     lora_dropout = 0,
     bias = "none",
     use_gradient_checkpointing = "unsloth",
@@ -263,22 +268,21 @@ trainer = UnslothTrainer(
     packing = False,
 
     args = UnslothTrainingArguments(
-        per_device_train_batch_size = 4,
+        per_device_train_batch_size = 2,
         per_device_eval_batch_size = 2,
-        gradient_accumulation_steps = 4,
+        gradient_accumulation_steps = 128,
 
         warmup_ratio = 0.1,
         num_train_epochs = 1,
-        learning_rate = 5e-5,
+        learning_rate = 2e-5,
 
-        logging_steps = 10,
+        logging_steps = 4,
         eval_strategy = "steps",
-        eval_steps = 300,
+        eval_steps = 8,
 
         save_strategy = "steps",
-        save_steps = 300,
+        save_steps = 8,
         save_total_limit = 3,
-        load_best_model_at_end = True,
 
         fp16 = not is_bfloat16_supported(),
         bf16 = is_bfloat16_supported(),
@@ -287,10 +291,10 @@ trainer = UnslothTrainer(
         lr_scheduler_type = "cosine",
         seed = SEED,
 
-        output_dir = MODEL_DIR,
+        output_dir = MODEL_DIR / "continual-pretrain",
         report_to = "wandb",
 
-        gradient_checkpointing = True,
+        gradient_checkpointing = False,
     ),
 )
 
@@ -299,4 +303,3 @@ trainer = UnslothTrainer(
 
 
 trainer_stats = trainer.train()
-trainer.evaluate()
