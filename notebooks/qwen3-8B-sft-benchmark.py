@@ -31,8 +31,10 @@ BATCH_SIZE = 32
 
 sys.path.insert(0, str(ROOT_DIR))
 
-MODEL_DIR = (ROOT_DIR / "models/version3").resolve()
-RESULT_DIR = (ROOT_DIR / "data/benchmark_results_1").resolve()
+EXTENDED_QNA_DATA = (ROOT_DIR / "data/eval_data/teleqna_custom.json").resolve()
+EXTENDED_MATH_DATA = (ROOT_DIR / "data/eval_data/telemath_custom.json").resolve()
+MODEL_DIR = (ROOT_DIR / "models/mistral/version1").resolve()
+RESULT_DIR = (ROOT_DIR / "data/mistral/benchmark_results_1").resolve()
 
 
 # In[2]:
@@ -67,9 +69,9 @@ BENCHMARKS = [
     "teleqna",
     "teletables",
     "telemath",
-    "telelogs",
+    # "telelogs",
     "3gpp_tsg",
-    "oranbench",
+    # "oranbench",
     "srsranbench",
 ]
 
@@ -77,6 +79,22 @@ raw_datasets = {
     name: load_dataset("GSMA/ot-full", name, split="test")
     for name in BENCHMARKS
 }
+
+extended_qna_ds = load_dataset(
+    "json",
+    data_files=str(EXTENDED_QNA_DATA),
+    split="train"
+)
+
+raw_datasets["teleqna_custom"] = extended_qna_ds
+
+extended_math_ds = load_dataset(
+    "json",
+    data_files=str(EXTENDED_MATH_DATA),
+    split="train"
+)
+
+raw_datasets["telemath_custom"] = extended_math_ds
 
 # In[77]:
 
@@ -102,6 +120,25 @@ for name, ds in raw_datasets.items():
     datasets_norm[name] = normalize_dataset(name, ds)
 
 
+SYSTEM_UNIFIED = """
+You are a precise and efficient assistant.
+
+General rules:
+- Always follow the required output format exactly
+- Be concise and task-focused
+- Always respond in the same language as the question
+
+When enable <think>:
+- Use step-by-step thinking but keep it SHORT and RELEVANT
+- Each step must be one short sentence
+- Stop as soon as the answer is clear
+- Do not restate the question
+- Do not include redundant or speculative reasoning
+
+When <think> is disabled:
+- Skip reasoning and answer directly
+"""
+
 # In[54]:
 
 
@@ -111,7 +148,7 @@ def build_texts_mcq(batch, dataset_name, enable_thinking=False):
     for sample in batch:
         choices = sample["choices"]
 
-        if dataset_name in ["teleqna", "teletables"]:
+        if dataset_name in ["teleqna", "teletables", "teleqna_custom"]:
             choices_text = "\n".join(
                 [f"{i+1}. {c}" for i, c in enumerate(choices)]
             )
@@ -119,6 +156,7 @@ def build_texts_mcq(batch, dataset_name, enable_thinking=False):
             choices_text = "\n".join(choices)
 
         messages = [
+            {"role": "system", "content": SYSTEM_UNIFIED},
             {
                 "role": "user",
                 "content": f"""You are an expert in telecommunications. Select the correct answer.
@@ -173,6 +211,7 @@ def build_texts_math(batch, enable_thinking=False):
         content = MATH_PROMPT.format(question=sample["question"])
 
         messages = [
+            {"role": "system", "content": SYSTEM_UNIFIED},
             {"role": "user", "content": content}
         ]
 
@@ -196,6 +235,7 @@ def build_texts_cls(batch, enable_thinking=False):
 
     for sample in batch:
         messages = [
+            {"role": "system", "content": SYSTEM_UNIFIED},
             {
                 "role": "user",
                 "content": sample["question"]
@@ -226,14 +266,7 @@ You are a strict classification system.
 
 Task:
 Choose EXACTLY ONE correct option from C1 to C8.
-run_and_save(
-    datasets_norm,
-    processed_data_think,
-    RESULT_DIR,
-    BATCH_SIZE=BATCH_SIZE,
-    mode="reasoning",
-    think=True
-)
+
 IMPORTANT RULES:
 - Do NOT explain anything
 - Do NOT repeat the question
@@ -268,19 +301,20 @@ Return only the final answer.
 def preprocess_dataset(name, dataset, enable_thinking=False):
     batch = list(dataset)
 
-    if name in ["teleqna", "teletables", "oranbench", "srsranbench"]:
+    if name in ["teleqna", "teletables", "oranbench", "srsranbench","teleqna_custom"]:
         return build_texts_mcq(batch, name, enable_thinking)
 
-    if name == "telemath":
+    elif name in ["telemath", "telemath_custom"]:
         return build_texts_math(batch, enable_thinking)
 
-    if name in ["telelogs"]:
+    elif name in ["telelogs"]:
         return build_texts_logs(batch, enable_thinking)
 
-    if name in ["3gpp_tsg"]:
+    elif name in ["3gpp_tsg"]:
         return build_texts_cls(batch, enable_thinking)
 
     raise ValueError(name)
+
 
 
 # In[56]:
@@ -332,7 +366,7 @@ def generate_from_tokenized(tokenized, start, end):
 
     outputs = model.generate(
         **batch,
-        max_new_tokens=8192,
+        max_new_tokens=2048,
         do_sample=True,
         return_dict_in_generate=True,
     )
@@ -422,12 +456,11 @@ run_and_save(
 # In[ ]:
 
 
-run_and_save(
-    datasets_norm,
-    processed_data_think,
-    RESULT_DIR,
-    BATCH_SIZE=BATCH_SIZE,
-    mode="reasoning",
-    think=True
-)
-
+# run_and_save(
+#     datasets_norm,
+#     processed_data_think,
+#     RESULT_DIR,
+#     BATCH_SIZE=BATCH_SIZE,
+#     mode="reasoning",
+#     think=True
+# )
