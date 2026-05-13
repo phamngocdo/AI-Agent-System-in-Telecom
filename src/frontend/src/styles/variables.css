@@ -1,0 +1,150 @@
+/* ═══════════════════════════════════════════
+   RESET & ROOT VARIABLES
+═══════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* ==================================================
+     NEW DESIGN TOKENS (Light, airy, modern)
+     ================================================== */
+  --color-primary:    #111827;   /* deep gray — headings, key text, active states */
+  --color-accent:     #4F8EF7;   /* bright blue — buttons, highlights, links */
+  --color-bg:         #F8F9FC;   /* off-white page background */
+  --color-surface:    #FFFFFF;   /* cards and panels */
+  --color-text:       #111827;
+  --color-muted:      #6B7280;
+  --color-border:     #E5E7EB;
+  
+  --radius-card:      16px;
+  --radius-pill:      999px;
+  --radius-input:     12px;
+  
+  --ease-default:     cubic-bezier(0.4, 0, 0.2, 1);
+  
+  --shadow-card:      0 2px 20px rgba(0,0,0,0.06);
+  --shadow-card-hover: 0 12px 32px rgba(0,0,0,0.10);
+  --shadow-form:      0 4px 32px rgba(0,0,0,0.08);
+
+  --font-body:        'DM Sans', sans-serif;
+  --font-display:     'Bricolage Grotesque', sans-serif;
+
+  /* ==================================================
+     LEGACY VARIABLES (Kept for existing chat components)
+     ================================================== */
+  --bg: var(--color-bg);
+  --bg2: var(--color-surface);
+  --bg3: #eef4ff;
+  --bg4: #dbeafe;
+  --bg5: #c7ddff;
+  --border: var(--color-border);
+  --border2: #d3d6dc;
+  --border3: #c2c5cd;
+  --text: var(--color-text);
+  --text2: #374151;
+  --text3: var(--color-muted);
+
+  --accent: var(--color-accent);
+  --accent2: #2563eb;
+  --accent3: #1d4ed8;
+  --accent-bg: rgba(79, 142, 247, 0.11);
+
+  --green: #10b981;
+  --green-bg: #10b98118;
+  --red: #ef4444;
+  --red-bg: #ef444418;
+  --amber: #f59e0b;
+  --amber-bg: #f59e0b18;
+  --blue: #3b82f6;
+  --blue-bg: #3b82f618;
+
+  --r: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  --shadow: var(--shadow-card);
+  --shadow-sm: 0 3px 15px rgba(0, 0, 0, 0.04);
+  --transition: .15s cubic-bezier(.4, 0, .2, 1);
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* ==================================================
+   GLOBAL POLISH RULES
+   ================================================== */
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px;}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(79,142,247,0.3); border-radius: 99px; }
+
+/* Selection */
+::selection { background: rgba(79,142,247,0.2); color: inherit; }
+
+/* Focus ring */
+*:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(79,142,247,0.25); }
+
+/* Links */
+a { color: var(--color-accent); text-decoration: none; transition: opacity 0.2s var(--ease-default); }
+a:hover { text-decoration: underline; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+code,
+pre {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ==================================================
+   GLOBAL ANIMATIONS
+   ================================================== */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes typingDot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%            { transform: scale(1);   opacity: 1; }
+}
