@@ -3,28 +3,57 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { useOnboarding } from '../../context/OnboardingContext';
 
+const getRangeProgress = (value, min, max) => {
+  const numericValue = Number(value);
+  const numericMin = Number(min);
+  const numericMax = Number(max);
+  return `${((numericValue - numericMin) / (numericMax - numericMin)) * 100}%`;
+};
+
 function SettingsModal({ closeModal }) {
-  const { api, setApi, user, setUser, llmParams, setLlmParams, updateProfile, logout } = useAppContext();
+  const { user, llmParams, setLlmParams, updateProfile, logout } = useAppContext();
   const { startTour, storageKey } = useOnboarding();
   const [activeTab, setActiveTab] = useState('params');
   const navigate = useNavigate();
 
-  const [editName, setEditName] = useState(user.name || '');
+  const [editName, setEditName] = useState(user.fullName || user.name || '');
   const [editPassword, setEditPassword] = useState('');
+  const [editMemory, setEditMemory] = useState(user.personalContext || llmParams.memory || '');
   const [loading, setLoading] = useState(false);
+  const [memoryLoading, setMemoryLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const [memoryMsg, setMemoryMsg] = useState('');
 
   const handleUpdate = async () => {
     setLoading(true);
     setMsg('');
     try {
-      await updateProfile(editName, editPassword);
+      await updateProfile({ fullName: editName, password: editPassword || undefined });
       setMsg('Cập nhật thành công!');
       setEditPassword('');
     } catch (e) {
       setMsg(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMemoryChange = (value) => {
+    setEditMemory(value);
+    setLlmParams(prev => ({ ...prev, memory: value }));
+    setMemoryMsg('');
+  };
+
+  const handlePersonalizationUpdate = async () => {
+    setMemoryLoading(true);
+    setMemoryMsg('');
+    try {
+      await updateProfile({ personalContext: editMemory });
+      setMemoryMsg('Đã lưu cá nhân hóa!');
+    } catch (e) {
+      setMemoryMsg(e.message);
+    } finally {
+      setMemoryLoading(false);
     }
   };
 
@@ -66,11 +95,16 @@ function SettingsModal({ closeModal }) {
                 <label>Thông tin cá nhân hóa (Long-term Memory)</label>
                 <textarea
                   placeholder="Ví dụ: Tôi là lập trình viên frontend, hãy luôn trả lời bằng code React. Giao tiếp ngắn gọn và xưng 'mình'..."
-                  value={llmParams.memory || ''}
-                  onChange={e => setLlmParams({ ...llmParams, memory: e.target.value })}
+                  value={editMemory}
+                  maxLength={4000}
+                  onChange={e => handleMemoryChange(e.target.value)}
                 ></textarea>
                 <div className="field-hint">AI sẽ luôn ghi nhớ ngữ cảnh này và áp dụng vào mọi câu trả lời để phù hợp với riêng bạn.</div>
               </div>
+              {memoryMsg && <div style={{ color: memoryMsg.includes('lưu') ? 'var(--green)' : 'var(--red)', marginBottom: '12px' }}>{memoryMsg}</div>}
+              <button onClick={handlePersonalizationUpdate} disabled={memoryLoading} style={{ padding: '8px 16px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '500' }}>
+                {memoryLoading ? 'Đang lưu...' : 'Lưu cá nhân hóa'}
+              </button>
             </div>
 
             <div className="settings-section">
@@ -83,6 +117,7 @@ function SettingsModal({ closeModal }) {
                     type="range"
                     min="0" max="1" step="0.1"
                     value={llmParams.temp}
+                    style={{ '--range-progress': getRangeProgress(llmParams.temp, 0, 1) }}
                     onChange={e => setLlmParams({ ...llmParams, temp: parseFloat(e.target.value) })}
                   />
                   <span className="range-value">{llmParams.temp}</span>
@@ -102,6 +137,7 @@ function SettingsModal({ closeModal }) {
                     type="range"
                     min="0" max="1" step="0.05"
                     value={llmParams.topP}
+                    style={{ '--range-progress': getRangeProgress(llmParams.topP, 0, 1) }}
                     onChange={e => setLlmParams({ ...llmParams, topP: parseFloat(e.target.value) })}
                   />
                   <span className="range-value">{llmParams.topP}</span>
@@ -117,6 +153,7 @@ function SettingsModal({ closeModal }) {
                     type="range"
                     min="1" max="100" step="1"
                     value={llmParams.topK}
+                    style={{ '--range-progress': getRangeProgress(llmParams.topK, 1, 100) }}
                     onChange={e => setLlmParams({ ...llmParams, topK: parseInt(e.target.value) })}
                   />
                   <span className="range-value">{llmParams.topK}</span>

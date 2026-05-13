@@ -262,6 +262,22 @@
   /* Tăng font code */
 }
 
+.msg-bubble .katex {
+  font-size: 1.05em;
+}
+
+.msg-bubble .katex-display {
+  margin: 14px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px;
+}
+
+.msg-bubble .katex-display>.katex {
+  display: inline-block;
+  max-width: 100%;
+}
+
 .pre-header {
   display: flex;
   align-items: center;

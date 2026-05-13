@@ -1,13 +1,27 @@
 import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import remarkMath from 'remark-math';
+import 'katex/dist/katex.min.css';
 import { useAppContext } from '../context/AppContext';
 import { createUniqueConversationTitle } from '../utils/conversationTitles';
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const createMessageId = () => `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const markdownRemarkPlugins = [remarkMath, remarkGfm, remarkBreaks];
+const markdownRehypePlugins = [[rehypeKatex, { strict: false }]];
+
+const MessageMarkdown = ({ content }) => (
+  <ReactMarkdown
+    remarkPlugins={markdownRemarkPlugins}
+    rehypePlugins={markdownRehypePlugins}
+  >
+    {String(content || '').replace(/\\n/g, '\n')}
+  </ReactMarkdown>
+);
 
 const stripThinking = (content) => {
   if (!content) return '';
@@ -409,13 +423,7 @@ function ChatArea() {
                       {f}
                     </div>
                   ))}
-                  {m.role === 'user' ? (
-                    <div dangerouslySetInnerHTML={{ __html: m.content.replace(/\\n/g, '<br/>') }} />
-                  ) : (
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                      {m.content.replace(/\\n/g, '\n')}
-                    </ReactMarkdown>
-                  )}
+                  <MessageMarkdown content={m.content} />
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
                       {m.sources.map((s, idx) => (

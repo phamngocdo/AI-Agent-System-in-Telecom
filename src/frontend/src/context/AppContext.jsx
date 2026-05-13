@@ -2,6 +2,16 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 const AppContext = createContext();
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const DEFAULT_LLM_PARAMS = { temp: 0.7, topP: 1.0, topK: 20, think: false, memory: '' };
+
+const normalizeUser = (data) => ({
+  id: data.id || data._id,
+  name: data.full_name || data.email.split('@')[0],
+  fullName: data.full_name || '',
+  email: data.email,
+  personalContext: data.personal_context || '',
+  loggedIn: true
+});
 
 const normalizeSession = (session) => {
   const id = session.id || session._id;
@@ -31,7 +41,7 @@ export function AppProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [api, setApi] = useState({ url: 'http://localhost:8000/v1', key: '', sysPrompt: '', temp: 0.7, maxTokens: 2048, timeout: 60 });
   const [model, setModel] = useState({ id: 'gpt-4o', label: 'GPT-4o' });
-  const [llmParams, setLlmParams] = useState({ temp: 0.7, topP: 1.0, topK: 40, think: false, memory: '' });
+  const [llmParams, setLlmParams] = useState(DEFAULT_LLM_PARAMS);
   const [rag, setRag] = useState({ enabled: true, webSearch: false });
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -234,11 +244,14 @@ export function AppProvider({ children }) {
         throw new Error('Invalid token');
       })
       .then(data => {
-        setUser({ name: data.full_name || data.email.split('@')[0], email: data.email, loggedIn: true });
+        const nextUser = normalizeUser(data);
+        setUser(nextUser);
+        setLlmParams(prev => ({ ...prev, memory: nextUser.personalContext }));
       })
       .catch(() => {
         localStorage.removeItem('access_token');
         setUser(null);
+        setLlmParams(prev => ({ ...prev, memory: '' }));
       })
       .finally(() => {
         setAuthLoading(false);
@@ -283,7 +296,9 @@ export function AppProvider({ children }) {
 
     if (meRes.ok) {
       const meData = await meRes.json();
-      setUser({ name: meData.full_name || meData.email.split('@')[0], email: meData.email, loggedIn: true });
+      const nextUser = normalizeUser(meData);
+      setUser(nextUser);
+      setLlmParams(prev => ({ ...prev, memory: nextUser.personalContext }));
       setConversations([]);
       setActiveId(null);
       return;
@@ -310,7 +325,22 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const updateProfile = async (fullName, password) => {
+  const updateProfile = async (updatesOrFullName, password, personalContext) => {
+    const updates = typeof updatesOrFullName === 'object' && updatesOrFullName !== null
+      ? updatesOrFullName
+      : { fullName: updatesOrFullName, password, personalContext };
+    const payload = {};
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'fullName')) {
+      payload.full_name = updates.fullName;
+    }
+    if (updates.password) {
+      payload.password = updates.password;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'personalContext')) {
+      payload.personal_context = updates.personalContext || '';
+    }
+
     const token = localStorage.getItem('access_token');
     const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
       method: 'PUT',
@@ -318,7 +348,7 @@ export function AppProvider({ children }) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ full_name: fullName, password: password || undefined })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
@@ -326,7 +356,11 @@ export function AppProvider({ children }) {
     }
 
     const meData = await res.json();
-    setUser({ name: meData.full_name || meData.email.split('@')[0], email: meData.email, loggedIn: true });
+    const nextUser = normalizeUser(meData);
+    setUser(nextUser);
+    if (Object.prototype.hasOwnProperty.call(updates, 'personalContext')) {
+      setLlmParams(prev => ({ ...prev, memory: nextUser.personalContext }));
+    }
     return true;
   };
 
@@ -334,6 +368,7 @@ export function AppProvider({ children }) {
     localStorage.removeItem('access_token');
     setUser(null);
     setAuthLoading(false);
+    setLlmParams(prev => ({ ...prev, memory: '' }));
     setConversations([]);
     setActiveId(null);
   };
