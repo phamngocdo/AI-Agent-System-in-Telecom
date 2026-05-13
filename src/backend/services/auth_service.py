@@ -49,6 +49,8 @@ async def update_user(email: str, user_update) -> dict:
     update_data = {}
     if user_update.full_name is not None:
         update_data["full_name"] = user_update.full_name
+    if user_update.personal_context is not None:
+        update_data["personal_context"] = user_update.personal_context.strip()
     if user_update.password is not None and user_update.password != "":
         update_data["hashed_password"] = get_password_hash(user_update.password)
         

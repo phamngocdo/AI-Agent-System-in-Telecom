@@ -5,6 +5,7 @@ from datetime import datetime
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+    personal_context: Optional[str] = Field(default=None, max_length=4000)
 
 class UserCreate(UserBase):
     password: str
@@ -12,6 +13,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     password: Optional[str] = None
+    personal_context: Optional[str] = Field(default=None, max_length=4000)
 
 class UserLogin(BaseModel):
     email: EmailStr

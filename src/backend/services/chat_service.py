@@ -1,7 +1,22 @@
 from typing import AsyncGenerator, Optional, List
-from llm_serve import TelcoLLM
+from llm_serve import ConversationMemory, TelcoLLM
+from llm_serve.thinking import strip_thinking
 from models.session import ChatMessageCreate
 from services.session_service import add_message_to_session
+
+conversation_memory = ConversationMemory(max_messages=5)
+
+async def save_successful_exchange(
+    session_id: str,
+    user_content: str,
+    ai_content: str,
+    file_ids: Optional[List[str]] = None,
+) -> None:
+    user_msg = ChatMessageCreate(role="user", content=user_content, file_ids=file_ids)
+    await add_message_to_session(session_id, user_msg)
+
+    ai_msg = ChatMessageCreate(role="ai", content=ai_content)
+    await add_message_to_session(session_id, ai_msg)
 
 async def process_chat_message(
     telco_llm: TelcoLLM,
@@ -14,11 +29,8 @@ async def process_chat_message(
     think: Optional[bool] = None,
     user_context: Optional[str] = None,
 ) -> str:
-    # 1. Save user message
-    user_msg = ChatMessageCreate(role="user", content=message, file_ids=file_ids)
-    await add_message_to_session(session_id, user_msg)
+    conversation_history = await conversation_memory.load(session_id)
     
-    # 2. Call LangChain/OpenAI-compatible vLLM endpoint
     ai_response_content = await telco_llm.response(
         message=message,
         stream=False,
@@ -28,11 +40,11 @@ async def process_chat_message(
         top_k=top_k,
         think=think,
         user_context=user_context,
+        conversation_history=conversation_history,
     )
+    ai_response_content = strip_thinking(ai_response_content)
     
-    # 3. Save AI response
-    ai_msg = ChatMessageCreate(role="ai", content=ai_response_content)
-    await add_message_to_session(session_id, ai_msg)
+    await save_successful_exchange(session_id, message, ai_response_content, file_ids)
     
     return ai_response_content
 
@@ -47,11 +59,8 @@ async def process_chat_message_stream(
     think: Optional[bool] = None,
     user_context: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
-    # 1. Save user message
-    user_msg = ChatMessageCreate(role="user", content=message, file_ids=file_ids)
-    await add_message_to_session(session_id, user_msg)
+    conversation_history = await conversation_memory.load(session_id)
     
-    # 2. Stream LangChain/OpenAI-compatible vLLM response
     response_stream = await telco_llm.response(
         message=message,
         stream=True,
@@ -61,6 +70,7 @@ async def process_chat_message_stream(
         top_k=top_k,
         think=think,
         user_context=user_context,
+        conversation_history=conversation_history,
     )
 
     chunks = []
@@ -68,7 +78,5 @@ async def process_chat_message_stream(
         chunks.append(chunk)
         yield chunk
         
-    # 3. Save AI response after stream completes
-    ai_response_content = "".join(chunks)
-    ai_msg = ChatMessageCreate(role="ai", content=ai_response_content)
-    await add_message_to_session(session_id, ai_msg)
+    ai_response_content = strip_thinking("".join(chunks))
+    await save_successful_exchange(session_id, message, ai_response_content, file_ids)
