@@ -1,0 +1,22 @@
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+client = QdrantClient("http://localhost:6333")
+
+records, _ = client.scroll(
+    collection_name="telco_user_file_chunks",
+    scroll_filter=Filter(
+        must=[
+            FieldCondition(
+                key="chunk_index",
+                match=MatchValue(value=31)
+            )
+        ]
+    ),
+    limit=10,
+    with_payload=True,
+    with_vectors=False,
+)
+
+for r in records:
+    print(r.payload)

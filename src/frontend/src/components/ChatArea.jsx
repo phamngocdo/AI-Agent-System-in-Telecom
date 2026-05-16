@@ -141,6 +141,93 @@ const MessageMarkdown = ({ content }) => (
   </ReactMarkdown>
 );
 
+const ActivityIcon = ({ type }) => {
+  if (type === 'file') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+        <path d="M14 2v5h5" />
+        <path d="M8.5 13h7" />
+        <path d="M8.5 17h5" />
+      </svg>
+    );
+  }
+
+  if (type === 'search') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M16.5 16.5 21 21" />
+        <path d="M8.5 11h5" />
+      </svg>
+    );
+  }
+
+  if (type === 'think') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 18h6" />
+        <path d="M10 22h4" />
+        <path d="M8 14c-1.4-1.1-2-2.7-2-4.5A6 6 0 0 1 18 9.5c0 1.8-.6 3.4-2 4.5-.7.6-1 1.1-1 2H9c0-.9-.3-1.4-1-2Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v3" />
+      <path d="M12 18v3" />
+      <path d="M4.2 7.5 6.8 9" />
+      <path d="M17.2 15 19.8 16.5" />
+      <path d="M4.2 16.5 6.8 15" />
+      <path d="M17.2 9 19.8 7.5" />
+    </svg>
+  );
+};
+
+const getActivityType = (activity) => {
+  const status = (activity?.status || '').toLowerCase();
+  if (status.includes('tìm thông tin') || status.includes('liên quan')) return 'search';
+  if (status.includes('phân tích') || status.includes('tệp') || status.includes('file') || activity?.hasFiles) return 'file';
+  if (activity?.think) return 'think';
+  return 'generate';
+};
+
+const getActivityTitle = (type) => {
+  if (type === 'file') return 'Đang xử lý tài liệu';
+  if (type === 'search') return 'Đang tìm ngữ cảnh phù hợp';
+  if (type === 'think') return 'Đang suy nghĩ';
+  return 'Đang tạo câu trả lời';
+};
+
+const getDefaultActivityStatus = (activity, type) => {
+  if (activity?.status) return activity.status;
+  if (type === 'file') return 'Đang đọc và lập chỉ mục nội dung file.';
+  if (type === 'search') return 'Đang truy xuất các đoạn liên quan từ tài liệu.';
+  if (type === 'think') return 'Model đang phân tích yêu cầu trước khi trả lời.';
+  return 'Model đang chuẩn bị phản hồi.';
+};
+
+const AssistantActivity = ({ activity }) => {
+  const type = getActivityType(activity);
+  return (
+    <div className={`assistant-activity ${type}`}>
+      <div className="activity-icon">
+        <ActivityIcon type={type} />
+      </div>
+      <div className="activity-copy">
+        <div className="activity-title">{getActivityTitle(type)}</div>
+        <div className="activity-status">{getDefaultActivityStatus(activity, type)}</div>
+      </div>
+      <div className="activity-dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  );
+};
+
 const stripThinking = (content) => {
   if (!content) return '';
   let text = String(content);
@@ -318,7 +405,7 @@ function ChatArea() {
   const activeConv = conversations.find(c => c.id === activeId);
   const messages = activeConv ? activeConv.messages : [];
   const streamingAiMessage = messages.find(m => m.role === 'ai' && m.streaming);
-  const showTypingIndicator = typing && (!streamingAiMessage || !streamingAiMessage.content);
+  const showTypingIndicator = typing && !streamingAiMessage;
   const filesTotalSize = files.reduce((sum, file) => sum + file.size, 0);
   const sessionFiles = activeConv?.files || [];
   const activeFileIds = Array.isArray(activeConv?.activeFileIds)
@@ -405,10 +492,6 @@ function ChatArea() {
         }
         : conv
     )));
-  };
-
-  const updateMessageContent = (conversationId, messageId, content) => {
-    updateMessage(conversationId, messageId, { content });
   };
 
   const getErrorMessage = async (res) => {
@@ -563,9 +646,23 @@ function ChatArea() {
     abortControllerRef.current = abortController;
     activeRequestConversationIdRef.current = conversation.id;
     let resolvedSessionId = conversation.backendId || null;
-    let assistantMessageId = null;
+    let assistantMessageId = createMessageId();
     let responseContent = '';
     let analyzingFile = filesToSend.length > 0;
+
+    appendMessage(conversation.id, {
+      id: assistantMessageId,
+      role: 'ai',
+      content: '',
+      streaming: true,
+      activity: {
+        hasFiles: filesToSend.length > 0,
+        think: llmParams.think,
+        status: filesToSend.length
+          ? 'Đang chuẩn bị phân tích tài liệu.'
+          : ''
+      }
+    });
 
     const ensureAssistantMessage = () => {
       if (assistantMessageId) return assistantMessageId;
@@ -575,14 +672,29 @@ function ChatArea() {
         id: assistantMessageId,
         role: 'ai',
         content: '',
-        streaming: true
+        streaming: true,
+        activity: {
+          hasFiles: filesToSend.length > 0,
+          think: llmParams.think
+        }
       });
       return assistantMessageId;
     };
 
     const setAssistantContent = (content) => {
       const messageId = ensureAssistantMessage();
-      updateMessageContent(conversation.id, messageId, content);
+      updateMessage(conversation.id, messageId, { content, activity: null });
+    };
+
+    const setAssistantActivity = (status) => {
+      const messageId = ensureAssistantMessage();
+      updateMessage(conversation.id, messageId, {
+        activity: {
+          hasFiles: filesToSend.length > 0,
+          think: llmParams.think,
+          status
+        }
+      });
     };
 
     try {
@@ -619,7 +731,7 @@ function ChatArea() {
           if (statusText.includes('Đã phân tích')) {
             analyzingFile = false;
           }
-          setAssistantContent(statusText);
+          setAssistantActivity(statusText);
         },
         onContent: (chunk) => {
           analyzingFile = false;
@@ -761,14 +873,17 @@ function ChatArea() {
               </div>
               <div className="msg-body">
                 <div className="msg-sender">{m.role === 'user' ? user.name : 'TelcoLLM'}</div>
-                <div className="msg-bubble">
+                <div className={`msg-bubble ${m.streaming && !m.content ? 'activity-only' : ''}`}>
                   {m.files && m.files.map((f, idx) => (
                     <div key={idx} className={`file-attach ${m.role !== 'user' ? 'ai-style' : ''}`}>
                       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                       {f}
                     </div>
                   ))}
-                  <MessageMarkdown content={m.content} />
+                  {m.streaming && !m.content && (
+                    <AssistantActivity activity={m.activity} />
+                  )}
+                  {m.content && <MessageMarkdown content={m.content} />}
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
                       {m.sources.map((s, idx) => (
@@ -788,8 +903,7 @@ function ChatArea() {
             <div className="typing-row">
               <div className="msg-avatar-wrap"><div className="msg-avatar-sm ai">✦</div></div>
               <div className="typing-bubble">
-                {llmParams.think && <div className="typing-label">Thinking...</div>}
-                <div className="typing-dots"><span></span><span></span><span></span></div>
+                <AssistantActivity activity={{ think: llmParams.think }} />
               </div>
             </div>
           )}

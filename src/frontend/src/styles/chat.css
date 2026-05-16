@@ -198,6 +198,11 @@
   width: 100%;
 }
 
+.msg-row.ai .msg-bubble.activity-only {
+  padding: 0;
+  overflow: hidden;
+}
+
 .msg-row.user .msg-bubble {
   background: rgba(79, 142, 247, .16);
   border: 1px solid rgba(79, 142, 247, .28);
@@ -479,11 +484,10 @@
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 14px 18px;
+  padding: 0;
   box-shadow: var(--shadow-sm);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  width: min(100%, 560px);
+  overflow: hidden;
 }
 
 .typing-label {
@@ -528,6 +532,98 @@
     opacity: 1;
     transform: scale(1.1);
   }
+}
+
+.assistant-activity {
+  --activity-color: var(--accent2);
+  --activity-bg: rgba(79, 142, 247, .10);
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px 16px;
+  color: var(--text);
+}
+
+.assistant-activity.file {
+  --activity-color: #0f9f6e;
+  --activity-bg: rgba(16, 185, 129, .12);
+}
+
+.assistant-activity.search {
+  --activity-color: #d97706;
+  --activity-bg: rgba(245, 158, 11, .14);
+}
+
+.assistant-activity.think {
+  --activity-color: #6d28d9;
+  --activity-bg: rgba(109, 40, 217, .11);
+}
+
+.activity-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--activity-bg);
+  color: var(--activity-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activity-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.activity-copy {
+  min-width: 0;
+}
+
+.activity-title {
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  margin-bottom: 3px;
+}
+
+.activity-status {
+  color: var(--text3);
+  font-size: 13.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.activity-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 4px;
+}
+
+.activity-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--activity-color);
+  animation: typing .95s ease-in-out infinite;
+}
+
+.activity-dots span:nth-child(2) {
+  animation-delay: .16s;
+}
+
+.activity-dots span:nth-child(3) {
+  animation-delay: .32s;
 }
 
 /* System message */

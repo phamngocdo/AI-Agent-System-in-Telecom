@@ -8,3 +8,5 @@
 wandb
 **/unsloth_compiled_cache/
 **/.ipynb_checkpoints/
+**/node_modules/
+**/package-lock.json/

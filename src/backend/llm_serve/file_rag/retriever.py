@@ -52,6 +52,32 @@ class DocumentRetriever:
             len(normalized_file_ids),
             question,
         )
+        source_records = await self.chunk_store.list_chunks(
+            file_ids=normalized_file_ids,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        if not source_records:
+            logger.info(
+                "RAG skipped: no stored chunks | session_id=%s user_id=%s files=%d",
+                session_id,
+                user_id,
+                len(normalized_file_ids),
+            )
+            return None
+
+        if len(source_records) <= settings.FILE_RAG_CONTEXT_CHUNKS:
+            chunks = self._records_to_chunks(source_records, normalized_file_ids)
+            context, included_chunks, context_chars = self._format_context_with_stats(chunks)
+            logger.info(
+                "RAG direct context | session_id=%s chunks=%d context_chunks=%d context_chars=%d",
+                session_id,
+                len(source_records),
+                included_chunks,
+                context_chars,
+            )
+            return context
+
         queries = await self._rewrite_queries(telco_llm, question, conversation_history)
         logger.info(
             "RAG rewritten queries | session_id=%s queries=%s",
@@ -63,6 +89,7 @@ class DocumentRetriever:
             file_ids=normalized_file_ids,
             session_id=session_id,
             user_id=user_id,
+            source_records=source_records,
         )
         if not candidates:
             logger.info(
@@ -74,7 +101,11 @@ class DocumentRetriever:
             )
             return None
 
-        reranked = await self.reranker.rerank(question, candidates)
+        reranked = await self._rerank_if_needed(
+            question=question,
+            candidates=candidates,
+            session_id=session_id,
+        )
         context, included_chunks, context_chars = self._format_context_with_stats(
             reranked[: settings.FILE_RAG_CONTEXT_CHUNKS]
         )
@@ -105,7 +136,7 @@ class DocumentRetriever:
             response = await telco_llm.generate_text(
                 system_prompt=REWRITE_QUERY_PROMPT,
                 user_prompt=user_prompt,
-                temperature=0.2,
+                temperature=0.7,
                 think=False,
             )
             queries = parse_json_string_list(response)
@@ -128,6 +159,7 @@ class DocumentRetriever:
         file_ids: Sequence[str],
         session_id: str,
         user_id: str,
+        source_records: Sequence[object],
     ) -> list[RetrievedChunk]:
         query_vectors = await self.embeddings.embed_documents(list(queries))
         candidates: dict[str, RetrievedChunk] = {}
@@ -152,11 +184,10 @@ class DocumentRetriever:
             for point in points:
                 self._merge_candidate(candidates, self._point_to_chunk(point))
 
-        bm25_chunks = await self._bm25_search(
+        bm25_chunks = self._bm25_search(
             queries=queries,
-            file_ids=file_ids,
+            records=source_records,
             session_id=session_id,
-            user_id=user_id,
         )
         for chunk in bm25_chunks:
             self._merge_candidate(candidates, chunk)
@@ -176,25 +207,15 @@ class DocumentRetriever:
         )
         return ranked
 
-    async def _bm25_search(
+    def _bm25_search(
         self,
         *,
         queries: Sequence[str],
-        file_ids: Sequence[str],
+        records: Sequence[object],
         session_id: str,
-        user_id: str,
     ) -> list[RetrievedChunk]:
-        records = await self.chunk_store.list_chunks(
-            file_ids=file_ids,
-            session_id=session_id,
-            user_id=user_id,
-        )
         if not records:
-            logger.info(
-                "RAG BM25 skipped: no stored chunks | session_id=%s files=%d",
-                session_id,
-                len(file_ids),
-            )
+            logger.info("RAG BM25 skipped: no stored chunks | session_id=%s", session_id)
             return []
 
         logger.info(
@@ -225,6 +246,24 @@ class DocumentRetriever:
                     chunks[chunk.point_id] = chunk
         return list(chunks.values())
 
+    async def _rerank_if_needed(
+        self,
+        *,
+        question: str,
+        candidates: list[RetrievedChunk],
+        session_id: str,
+    ) -> list[RetrievedChunk]:
+        if len(candidates) <= settings.FILE_RAG_CONTEXT_CHUNKS:
+            logger.info(
+                "RAG rerank skipped | session_id=%s candidates=%d context_chunks=%d",
+                session_id,
+                len(candidates),
+                settings.FILE_RAG_CONTEXT_CHUNKS,
+            )
+            return candidates
+
+        return await self.reranker.rerank(question, candidates)
+
     @staticmethod
     def _point_to_chunk(point, *, bm25_score: float = 0.0) -> RetrievedChunk:
         payload = point.payload or {}
@@ -237,6 +276,22 @@ class DocumentRetriever:
             text=text,
             dense_score=float(getattr(point, "score", 0.0) or 0.0),
             bm25_score=bm25_score,
+        )
+
+    @classmethod
+    def _records_to_chunks(
+        cls,
+        records: Sequence[object],
+        file_ids: Sequence[str],
+    ) -> list[RetrievedChunk]:
+        file_order = {file_id: index for index, file_id in enumerate(file_ids)}
+        chunks = [cls._point_to_chunk(record) for record in records]
+        return sorted(
+            chunks,
+            key=lambda chunk: (
+                file_order.get(chunk.file_id, len(file_order)),
+                chunk.chunk_index,
+            ),
         )
 
     @staticmethod
