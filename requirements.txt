@@ -4,7 +4,12 @@ transformer
 torch
 langchain-openai
 langchain-qdrant
+langchain-huggingface
+langchain-community
+langchain-classic
+langchain-text-splitters
 qdrant-client
+sentence-transformers
 pydantic-settings
 fastapi
 uvicorn

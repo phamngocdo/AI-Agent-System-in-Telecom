@@ -23,6 +23,7 @@ class ChatSessionBase(BaseModel):
 class ChatSession(ChatSessionBase):
     id: str = Field(alias="_id")
     user_id: str
+    file_ids: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     
@@ -34,3 +35,12 @@ class ChatSessionCreate(ChatSessionBase):
 
 class ChatSessionUpdate(BaseModel):
     title: str
+
+class ChatFile(BaseModel):
+    file_id: str
+    filename: str
+    file_type: Optional[str] = None
+    status: str
+    chunk_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

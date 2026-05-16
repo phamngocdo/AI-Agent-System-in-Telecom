@@ -1,5 +1,7 @@
 from typing import Optional
 
+from bson import ObjectId
+
 from database import get_database
 
 
@@ -27,6 +29,29 @@ class ConversationMemory:
 
         messages.reverse()
         return [turn for doc in messages if (turn := self._to_chat_turn(doc))]
+
+    async def load_file_ids(self, session_id: str) -> list[str]:
+        db = get_database()
+        file_ids: list[str] = []
+
+        try:
+            session = await db["sessions"].find_one(
+                {"_id": ObjectId(session_id)},
+                {"file_ids": 1},
+            )
+            if session:
+                file_ids.extend(session.get("file_ids") or [])
+        except Exception:
+            pass
+
+        cursor = db["messages"].find(
+            {"session_id": session_id, "file_ids": {"$exists": True, "$ne": None}},
+            {"file_ids": 1},
+        )
+        async for doc in cursor:
+            file_ids.extend(doc.get("file_ids") or [])
+
+        return self._dedupe_file_ids(file_ids)
 
     def _to_chat_turn(self, message: dict) -> Optional[tuple[str, str]]:
         role = self._normalize_role(message.get("role"))
@@ -59,3 +84,14 @@ class ConversationMemory:
             return normalized[:self.max_message_chars]
 
         return normalized
+
+    @staticmethod
+    def _dedupe_file_ids(file_ids: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for file_id in file_ids:
+            normalized = str(file_id).strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return result
