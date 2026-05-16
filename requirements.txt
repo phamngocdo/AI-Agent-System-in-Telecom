@@ -1,6 +1,6 @@
 vllm
 unsloth
-transformer
+transformers
 torch
 langchain-openai
 langchain-qdrant

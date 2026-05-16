@@ -26,39 +26,52 @@ class LocalEmbeddingModel:
 class LocalCrossEncoderReranker:
     def __init__(self) -> None:
         self.reranker = None
+
         if settings.RERANK_MODEL:
             cross_encoder = HuggingFaceCrossEncoder(
                 model_name=settings.RERANK_MODEL,
                 model_kwargs={"device": settings.RERANK_DEVICE},
             )
+
             self.reranker = CrossEncoderReranker(
                 model=cross_encoder,
                 top_n=settings.FILE_RAG_CONTEXT_CHUNKS,
             )
 
-    async def rerank(self, question: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    async def rerank(
+        self,
+        question: str,
+        chunks: list[RetrievedChunk],
+    ) -> list[RetrievedChunk]:
         if not self.reranker or not chunks:
             return chunks
 
-        documents = [chunk.to_document() for chunk in chunks]
+        chunk_by_id = {
+            chunk.point_id: chunk
+            for chunk in chunks
+        }
+
+        documents = [
+            chunk.to_document()
+            for chunk in chunks
+        ]
+
         reranked_documents = await asyncio.to_thread(
             self.reranker.compress_documents,
             documents,
             question,
         )
-        order = {
-            document.metadata["point_id"]: index
-            for index, document in enumerate(reranked_documents)
-        }
 
-        ranked_chunks = [
-            chunk for chunk in chunks if chunk.point_id in order
-        ]
-        for chunk in ranked_chunks:
-            chunk.rerank_score = float(len(ranked_chunks) - order[chunk.point_id])
+        ranked_chunks = []
 
-        return sorted(
-            ranked_chunks,
-            key=lambda chunk: (chunk.rerank_score or 0.0, chunk.combined_score),
-            reverse=True,
-        )
+        for index, document in enumerate(reranked_documents):
+            point_id = document.metadata.get("point_id")
+            chunk = chunk_by_id.get(point_id)
+
+            if not chunk:
+                continue
+
+            chunk.rerank_score = float(len(reranked_documents) - index)
+            ranked_chunks.append(chunk)
+
+        return ranked_chunks
