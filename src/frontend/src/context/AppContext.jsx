@@ -15,11 +15,17 @@ const normalizeUser = (data) => ({
 
 const normalizeSession = (session) => {
   const id = session.id || session._id;
+  const fileIds = session.file_ids || [];
   return {
     id,
     backendId: id,
     title: session.title || 'Hội thoại đã lưu',
     tag: 'chat',
+    file_ids: fileIds,
+    activeFileIds: fileIds,
+    files: [],
+    filesLoaded: false,
+    loadingFiles: false,
     createdAt: session.created_at ? new Date(session.created_at) : new Date(),
     updatedAt: session.updated_at ? new Date(session.updated_at) : new Date(),
     messages: [],
@@ -35,6 +41,29 @@ const normalizeMessage = (message) => ({
   file_ids: message.file_ids || null,
   createdAt: message.created_at ? new Date(message.created_at) : new Date()
 });
+
+const normalizeChatFile = (file) => ({
+  file_id: file.file_id,
+  filename: file.filename || 'Tài liệu',
+  file_type: file.file_type || '',
+  status: file.status || 'unknown',
+  chunk_count: file.chunk_count || 0,
+  createdAt: file.created_at ? new Date(file.created_at) : null,
+  updatedAt: file.updated_at ? new Date(file.updated_at) : null
+});
+
+const dedupeIds = (ids) => {
+  const seen = new Set();
+  const result = [];
+  ids.forEach(id => {
+    const normalized = String(id || '').trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  });
+  return result;
+};
 
 export function AppProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -134,6 +163,80 @@ export function AppProvider({ children }) {
       )));
       throw error;
     }
+  };
+
+  const loadConversationFiles = async (
+    conversationId,
+    token = localStorage.getItem('access_token'),
+    activateNewFiles = false,
+    backendIdOverride = null
+  ) => {
+    if (!token || !conversationId) return [];
+
+    const conversation = conversations.find(conv => conv.id === conversationId);
+    const backendId = backendIdOverride || conversation?.backendId || conversationId;
+    if (!backendId) return [];
+
+    setConversations(prev => prev.map(conv => (
+      conv.id === conversationId
+        ? { ...conv, loadingFiles: true }
+        : conv
+    )));
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${backendId}/files`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(await getErrorMessage(res));
+      }
+
+      const data = await res.json();
+      const loadedFiles = data.map(normalizeChatFile);
+      const fileIds = loadedFiles.map(file => file.file_id);
+
+      setConversations(prev => prev.map(conv => {
+        if (conv.id !== conversationId) return conv;
+
+        const previousFileIds = conv.file_ids || [];
+        const previousActive = Array.isArray(conv.activeFileIds)
+          ? conv.activeFileIds.filter(fileId => fileIds.includes(fileId))
+          : fileIds;
+        const newFileIds = fileIds.filter(fileId => !previousFileIds.includes(fileId));
+        const activeFileIds = activateNewFiles
+          ? dedupeIds([...previousActive, ...newFileIds])
+          : previousActive;
+
+        return {
+          ...conv,
+          files: loadedFiles,
+          file_ids: fileIds,
+          activeFileIds,
+          filesLoaded: true,
+          loadingFiles: false
+        };
+      }));
+
+      return loadedFiles;
+    } catch (error) {
+      setConversations(prev => prev.map(conv => (
+        conv.id === conversationId
+          ? { ...conv, filesLoaded: true, loadingFiles: false, filesLoadError: error.message }
+          : conv
+      )));
+      throw error;
+    }
+  };
+
+  const setConversationActiveFileIds = (conversationId, activeFileIds) => {
+    setConversations(prev => prev.map(conv => (
+      conv.id === conversationId
+        ? { ...conv, activeFileIds: dedupeIds(activeFileIds) }
+        : conv
+    )));
   };
 
   const renameConversation = async (
@@ -385,7 +488,8 @@ export function AppProvider({ children }) {
     activeId, setActiveId,
     typing, setTyping,
     files, setFiles,
-    loadConversations, loadConversationMessages,
+    loadConversations, loadConversationMessages, loadConversationFiles,
+    setConversationActiveFileIds,
     renameConversation, deleteConversation,
     login, registerUser, updateProfile, logout
   };

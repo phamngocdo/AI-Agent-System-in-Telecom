@@ -278,6 +278,37 @@
   max-width: 100%;
 }
 
+.markdown-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.markdown-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.markdown-table-wrap th,
+.markdown-table-wrap td {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-table-wrap th {
+  background: var(--bg3);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.markdown-table-wrap tbody tr:nth-child(even) {
+  background: var(--bg);
+}
+
 .pre-header {
   display: flex;
   align-items: center;
@@ -546,6 +577,100 @@
   text-align: center;
 }
 
+.session-files-bar {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.session-files-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.session-files-head button {
+  border: none;
+  background: var(--bg3);
+  color: var(--accent2);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  transition: all var(--transition);
+}
+
+.session-files-head button:hover {
+  background: var(--accent-bg);
+}
+
+.session-file-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.session-file-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 280px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.session-file-toggle.active {
+  border-color: rgba(79, 142, 247, .38);
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.session-file-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.session-file-toggle svg {
+  width: 15px;
+  height: 15px;
+  stroke: var(--accent2);
+  fill: none;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.session-file-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-file-toggle small {
+  color: var(--text3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .upload-previews {
   display: flex;
   flex-wrap: wrap;
@@ -562,7 +687,6 @@
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 14px;
-  /* Tăng từ 12px */
   font-weight: 500;
   color: var(--text);
   animation: chip-in .15s ease;
@@ -597,7 +721,6 @@
 
 .chip-del {
   width: 20px;
-  /* Tăng từ 16px */
   height: 20px;
   border-radius: 6px;
   background: var(--bg3);
@@ -617,11 +740,136 @@
 
 .chip-del svg {
   width: 14px;
-  /* Tăng từ 11px */
   height: 14px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2.5;
+}
+
+.attach-modal {
+  position: relative;
+}
+
+.attach-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.attach-hidden-input {
+  display: none;
+}
+
+.attach-limit {
+  color: var(--text3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.attach-error {
+  background: var(--red-bg);
+  border: 1px solid rgba(239, 68, 68, .22);
+  color: var(--red);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.attach-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.attach-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.attach-table th,
+.attach-table td {
+  padding: 11px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.attach-table th {
+  background: var(--bg3);
+  color: var(--text2);
+  font-weight: 800;
+}
+
+.attach-table tr:last-child td {
+  border-bottom: none;
+}
+
+.attach-file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.attach-file-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-file-name svg {
+  width: 17px;
+  height: 17px;
+  stroke: var(--accent2);
+  fill: none;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.attach-remove-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--text3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.attach-remove-btn:hover {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.attach-remove-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.attach-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.attach-modal .btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .input-box {
@@ -630,11 +878,6 @@
   border-radius: var(--r-xl);
   transition: border-color var(--transition), box-shadow var(--transition);
   box-shadow: var(--shadow-sm);
-}
-
-.input-box:focus-within {
-  border-color: rgba(79, 142, 247, .42);
-  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .input-box.drag-over {
@@ -647,7 +890,6 @@
   align-items: flex-end;
   gap: 14px;
   padding: 16px 18px 14px;
-  /* Tăng padding */
 }
 
 .input-row textarea {
@@ -657,17 +899,16 @@
   outline: none;
   color: var(--text);
   font-size: 16px;
-  /* Tăng từ 14px */
   line-height: 1.6;
   resize: none;
   min-height: 28px;
-  /* Tăng từ 24px */
   max-height: 200px;
-  /* Tăng từ 160px */
 }
 
-.input-row textarea::placeholder {
-  color: var(--text3);
+.input-row textarea:focus,
+.input-row textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .input-tools-row {
@@ -690,7 +931,7 @@
   border: 1px solid transparent;
   color: var(--text3);
   font-size: 14px;
-  /* Tăng từ 12px */
+  cursor: pointer;
   font-weight: 600;
   transition: all var(--transition);
 }
@@ -720,7 +961,7 @@
   font-size: 13px;
   line-height: 1.4;
   padding: 8px 0;
- }
+}
 
 .input-tools-sep {
   width: 1px;
@@ -818,6 +1059,7 @@
 }
 
 @media (max-width: 768px) {
+
   .messages-inner,
   .input-area-inner {
     width: calc(100% - 32px);
@@ -825,5 +1067,13 @@
 
   .msg-row.user .msg-bubble {
     max-width: 90%;
+  }
+
+  .attach-table {
+    min-width: 520px;
+  }
+
+  .attach-table-wrap {
+    overflow-x: auto;
   }
 }
